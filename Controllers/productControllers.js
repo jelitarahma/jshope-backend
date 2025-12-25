@@ -88,6 +88,9 @@ exports.createProduct = async (req, res) => {
       short_description,
       category_id,
       variants: variantsString,
+      thumbnail_url, // URL eksternal untuk thumbnail (opsional)
+      image_urls, // Array URL eksternal untuk gambar (opsional)
+      video_url, // URL eksternal untuk video (opsional)
     } = req.body;
 
     if (!name || !category_id || !variantsString) {
@@ -109,6 +112,17 @@ exports.createProduct = async (req, res) => {
       throw new Error("Variants must be non-empty array");
     }
 
+    // Parse image_urls jika ada (string JSON)
+    let parsedImageUrls = [];
+    if (image_urls) {
+      try {
+        parsedImageUrls = JSON.parse(image_urls);
+      } catch (e) {
+        // Jika bukan JSON, coba split by comma
+        parsedImageUrls = image_urls.split(",").map((u) => u.trim());
+      }
+    }
+
     // Buat produk
     const product = new Product({
       name,
@@ -117,13 +131,14 @@ exports.createProduct = async (req, res) => {
       short_description,
       category_id,
       status: "active",
+      video_url: video_url || null,
     });
     await product.save();
 
     const createdVariants = [];
     const createdImages = [];
 
-    // Proses variant + gambar
+    // Proses variant
     for (let i = 0; i < parsedVariants.length; i++) {
       const v = parsedVariants[i];
 
@@ -141,8 +156,11 @@ exports.createProduct = async (req, res) => {
       await variant.save();
       createdVariants.push(variant);
 
+      // Cek apakah ada file upload untuk variant ini
       const fileKey = `variant_${i}_images`;
-      const variantFiles = req.files.filter((f) => f.fieldname === fileKey);
+      const variantFiles = req.files
+        ? req.files.filter((f) => f.fieldname === fileKey)
+        : [];
       if (variantFiles.length > 0) {
         const images = variantFiles.map((file, idx) => ({
           product_id: product._id,
@@ -156,12 +174,14 @@ exports.createProduct = async (req, res) => {
       }
     }
 
-    // Gambar produk utama
-    const productImages = req.files.filter(
-      (f) => f.fieldname === "product_images"
-    );
-    if (productImages.length > 0) {
-      const images = productImages.map((file, idx) => ({
+    // Gambar produk utama - cek file upload atau URL
+    const productImagesFiles = req.files
+      ? req.files.filter((f) => f.fieldname === "product_images")
+      : [];
+
+    if (productImagesFiles.length > 0) {
+      // Opsi 1: Pakai file upload
+      const images = productImagesFiles.map((file, idx) => ({
         product_id: product._id,
         variant_id: null,
         image_url: `/uploads/${file.filename}`,
@@ -170,14 +190,39 @@ exports.createProduct = async (req, res) => {
       }));
       await ProductImage.insertMany(images);
       createdImages.push(...images);
+    } else if (parsedImageUrls.length > 0) {
+      // Opsi 2: Pakai URL eksternal
+      const images = parsedImageUrls.map((url, idx) => ({
+        product_id: product._id,
+        variant_id: null,
+        image_url: url,
+        is_primary: idx === 0,
+        sort_order: idx,
+      }));
+      await ProductImage.insertMany(images);
+      createdImages.push(...images);
+    } else if (thumbnail_url) {
+      // Opsi 3: Pakai thumbnail URL saja
+      const image = {
+        product_id: product._id,
+        variant_id: null,
+        image_url: thumbnail_url,
+        is_primary: true,
+        sort_order: 0,
+      };
+      await ProductImage.create(image);
+      createdImages.push(image);
     }
 
-    // Video
-    const videoFile = req.files.find((f) => f.fieldname === "video");
+    // Video - cek file upload atau URL
+    const videoFile = req.files
+      ? req.files.find((f) => f.fieldname === "video")
+      : null;
     if (videoFile) {
       product.video_url = `/uploads/${videoFile.filename}`;
       await product.save();
     }
+    // video_url dari body sudah di-set di atas
 
     await updateProductSummary(product._id);
 
@@ -187,11 +232,13 @@ exports.createProduct = async (req, res) => {
       variants: createdVariants,
       images: createdImages,
       video_uploaded: !!videoFile,
+      used_external_urls: parsedImageUrls.length > 0 || !!thumbnail_url,
     });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 };
+
 
 // UPDATE PRODUCT
 exports.updateProduct = async (req, res) => {

@@ -171,7 +171,28 @@ Mengambil semua produk dengan filter dan pagination.
 | Access | Admin Only |
 | Content-Type | multipart/form-data |
 
+**Request Body (form-data):**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| name | string | Nama produk (required) |
+| description | string | Deskripsi produk |
+| short_description | string | Deskripsi singkat |
+| category_id | ObjectId | ID kategori (required) |
+| variants | JSON string | Array varian produk (required) |
+| product_images | file[] | File gambar (opsional) |
+| video | file | File video (opsional) |
+| thumbnail_url | string | URL gambar thumbnail eksternal (opsional, alternatif upload) |
+| image_urls | JSON string | Array URL gambar eksternal (opsional, alternatif upload) |
+| video_url | string | URL video eksternal (opsional, alternatif upload) |
+
+**Catatan:**
+- Untuk gambar, pilih salah satu: upload file ATAU kirim URL eksternal
+- Di lokal: bisa upload file
+- Di Vercel: gunakan URL eksternal (misal dari Cloudinary, ImgBB, dll)
+
 ---
+
 
 ### 4. Update Product (Admin Only)
 

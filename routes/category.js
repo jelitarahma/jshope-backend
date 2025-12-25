@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const categoryController = require("../Controllers/categoryControllers");
-const auth = require("../middleware/auth");
+const auth = require("../Middleware/auth");
 
 router.get("/", categoryController.getAllCategories);
 router.get("/:id", categoryController.getCategoryById);

@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const midtransController = require("../Controllers/midtransController");
-const auth = require("../middleware/auth");
+const auth = require("../Middleware/auth");
 
 // Webhook endpoint - dipanggil oleh Midtrans (tanpa auth)
 router.post("/notification", midtransController.handleNotification);

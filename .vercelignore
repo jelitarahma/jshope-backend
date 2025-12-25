@@ -1,0 +1,9 @@
+# Ignore uploads folder (too large for serverless)
+uploads/
+
+# Ignore development files
+node_modules/
+.env
+.git/
+*.log
+*.md

@@ -1,0 +1,310 @@
+const Product = require("../models/Product");
+const ProductVariant = require("../models/ProductVariant");
+const ProductImage = require("../models/productImage");
+const slugify = require("slugify");
+
+// Update ringkasan produk
+const updateProductSummary = async (productId) => {
+  const variants = await ProductVariant.find({
+    product_id: productId,
+    is_active: true,
+  });
+
+  const prices = variants.map((v) => v.price).filter((p) => p > 0);
+  const stocks = variants.map((v) => v.stock);
+
+  const price_min = prices.length > 0 ? Math.min(...prices) : 0;
+  const price_max = prices.length > 0 ? Math.max(...prices) : price_min;
+  const total_stock = stocks.reduce((a, b) => a + b, 0);
+  const variant_count = variants.length;
+
+  const primaryImage = await ProductImage.findOne({
+    product_id: productId,
+    is_primary: true,
+  });
+
+  await Product.findByIdAndUpdate(productId, {
+    price_min,
+    price_max: price_max > price_min ? price_max : null,
+    total_stock,
+    variant_count,
+    thumbnail: primaryImage ? primaryImage.image_url : null,
+  });
+};
+
+// GET ALL PRODUCTS
+exports.getAllProducts = async (req, res) => {
+  try {
+    const products = await Product.find({ status: "active" })
+      .select(
+        "name slug description short_description thumbnail price_min total_stock variant_count category_id video_url"
+      )
+      .populate("category_id", "name")
+      .sort({ createdAt: -1 });
+
+    res.json(products);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// GET PRODUCT DETAIL
+exports.getProductById = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id).populate(
+      "category_id"
+    );
+    if (!product) return res.status(404).json({ error: "Product not found" });
+
+    const variants = await ProductVariant.find({
+      product_id: product._id,
+      is_active: true,
+    });
+    const images = await ProductImage.find({ product_id: product._id }).sort({
+      is_primary: -1,
+      sort_order: 1,
+    });
+
+    res.json({
+      product,
+      variants,
+      images,
+      video_url: product.video_url,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// CREATE PRODUCT
+exports.createProduct = async (req, res) => {
+  if (req.user.role !== "admin")
+    return res.status(403).json({ error: "Admin only" });
+
+  try {
+    let {
+      name,
+      description,
+      short_description,
+      category_id,
+      variants: variantsString,
+    } = req.body;
+
+    if (!name || !category_id || !variantsString) {
+      throw new Error("Name, category_id, and variants are required");
+    }
+
+    // Generate slug
+    let slug = slugify(name, { lower: true, strict: true });
+    let existing = await Product.findOne({ slug });
+    let counter = 1;
+    while (existing) {
+      slug = slugify(name, { lower: true, strict: true }) + "-" + counter;
+      existing = await Product.findOne({ slug });
+      counter++;
+    }
+
+    const parsedVariants = JSON.parse(variantsString);
+    if (!Array.isArray(parsedVariants) || parsedVariants.length === 0) {
+      throw new Error("Variants must be non-empty array");
+    }
+
+    // Buat produk
+    const product = new Product({
+      name,
+      slug,
+      description,
+      short_description,
+      category_id,
+      status: "active",
+    });
+    await product.save();
+
+    const createdVariants = [];
+    const createdImages = [];
+
+    // Proses variant + gambar
+    for (let i = 0; i < parsedVariants.length; i++) {
+      const v = parsedVariants[i];
+
+      const variant = new ProductVariant({
+        product_id: product._id,
+        sku:
+          v.sku ||
+          `${slug.toUpperCase()}-${(i + 1).toString().padStart(3, "0")}`,
+        attributes: v.attributes,
+        price: Number(v.price),
+        stock: Number(v.stock),
+        weight: v.weight ? Number(v.weight) : undefined,
+        is_active: true,
+      });
+      await variant.save();
+      createdVariants.push(variant);
+
+      const fileKey = `variant_${i}_images`;
+      const variantFiles = req.files.filter((f) => f.fieldname === fileKey);
+      if (variantFiles.length > 0) {
+        const images = variantFiles.map((file, idx) => ({
+          product_id: product._id,
+          variant_id: variant._id,
+          image_url: `/uploads/${file.filename}`,
+          is_primary: idx === 0 && i === 0,
+          sort_order: idx,
+        }));
+        await ProductImage.insertMany(images);
+        createdImages.push(...images);
+      }
+    }
+
+    // Gambar produk utama
+    const productImages = req.files.filter(
+      (f) => f.fieldname === "product_images"
+    );
+    if (productImages.length > 0) {
+      const images = productImages.map((file, idx) => ({
+        product_id: product._id,
+        variant_id: null,
+        image_url: `/uploads/${file.filename}`,
+        is_primary: idx === 0,
+        sort_order: idx,
+      }));
+      await ProductImage.insertMany(images);
+      createdImages.push(...images);
+    }
+
+    // Video
+    const videoFile = req.files.find((f) => f.fieldname === "video");
+    if (videoFile) {
+      product.video_url = `/uploads/${videoFile.filename}`;
+      await product.save();
+    }
+
+    await updateProductSummary(product._id);
+
+    res.status(201).json({
+      message: "Product created successfully",
+      product,
+      variants: createdVariants,
+      images: createdImages,
+      video_uploaded: !!videoFile,
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+};
+
+// UPDATE PRODUCT
+exports.updateProduct = async (req, res) => {
+  if (req.user.role !== "admin")
+    return res.status(403).json({ error: "Admin only" });
+
+  try {
+    const product = await Product.findById(req.params.id);
+    if (!product) return res.status(404).json({ error: "Product not found" });
+
+    let {
+      name,
+      description,
+      short_description,
+      category_id,
+      variants: variantsString,
+    } = req.body;
+
+    if (name) {
+      product.name = name;
+      let slug = slugify(name, { lower: true, strict: true });
+      let existing = await Product.findOne({ slug, _id: { $ne: product._id } });
+      let counter = 1;
+      while (existing) {
+        slug = slugify(name, { lower: true, strict: true }) + "-" + counter;
+        existing = await Product.findOne({ slug, _id: { $ne: product._id } });
+        counter++;
+      }
+      product.slug = slug;
+    }
+    if (description) product.description = description;
+    if (short_description) product.short_description = short_description;
+    if (category_id) product.category_id = category_id;
+
+    await product.save();
+
+    if (variantsString) {
+      await ProductVariant.deleteMany({ product_id: product._id });
+      const parsedVariants = JSON.parse(variantsString);
+      for (let i = 0; i < parsedVariants.length; i++) {
+        const v = parsedVariants[i];
+        const variant = new ProductVariant({
+          product_id: product._id,
+          sku:
+            v.sku ||
+            `${product.slug.toUpperCase()}-${(i + 1)
+              .toString()
+              .padStart(3, "0")}`,
+          attributes: v.attributes,
+          price: Number(v.price),
+          stock: Number(v.stock),
+          weight: v.weight ? Number(v.weight) : undefined,
+          is_active: true,
+        });
+        await variant.save();
+
+        const fileKey = `variant_${i}_images`;
+        const variantFiles = req.files.filter((f) => f.fieldname === fileKey);
+        if (variantFiles.length > 0) {
+          const images = variantFiles.map((file, idx) => ({
+            product_id: product._id,
+            variant_id: variant._id,
+            image_url: `/uploads/${file.filename}`,
+            is_primary: idx === 0 && i === 0,
+            sort_order: idx,
+          }));
+          await ProductImage.insertMany(images);
+        }
+      }
+    }
+
+    const productImages = req.files.filter(
+      (f) => f.fieldname === "product_images"
+    );
+    if (productImages.length > 0) {
+      const images = productImages.map((file, idx) => ({
+        product_id: product._id,
+        variant_id: null,
+        image_url: `/uploads/${file.filename}`,
+        is_primary: idx === 0,
+        sort_order: idx,
+      }));
+      await ProductImage.insertMany(images);
+    }
+
+    const videoFile = req.files.find((f) => f.fieldname === "video");
+    if (videoFile) {
+      product.video_url = `/uploads/${videoFile.filename}`;
+      await product.save();
+    }
+
+    await updateProductSummary(product._id);
+
+    res.json({ message: "Product updated", product });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+};
+
+// DELETE PRODUCT
+exports.deleteProduct = async (req, res) => {
+  if (req.user.role !== "admin")
+    return res.status(403).json({ error: "Admin only" });
+
+  try {
+    const productId = req.params.id;
+
+    await Product.findByIdAndDelete(productId);
+    await ProductVariant.deleteMany({ product_id: productId });
+    await ProductImage.deleteMany({ product_id: productId });
+
+    res.json({ message: "Product deleted" });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+};

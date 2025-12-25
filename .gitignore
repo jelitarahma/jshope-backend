@@ -1,0 +1,46 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Dependency directories (WAJIB!)
+node_modules/
+jspm_packages/
+
+# dotenv environment variables (WAJIB untuk secret!)
+.env
+.env.local
+.env.*.local
+
+# Optional npm cache
+.npm
+
+# Build / dist folder (kalau pakai)
+dist/
+build/
+
+# Editor & OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~

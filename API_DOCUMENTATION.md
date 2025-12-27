@@ -173,23 +173,127 @@ Mengambil semua produk dengan filter dan pagination.
 
 **Request Body (form-data):**
 
-| Field | Type | Description |
-|-------|------|-------------|
-| name | string | Nama produk (required) |
-| description | string | Deskripsi produk |
-| short_description | string | Deskripsi singkat |
-| category_id | ObjectId | ID kategori (required) |
-| variants | JSON string | Array varian produk (required) |
-| product_images | file[] | File gambar (opsional) |
-| video | file | File video (opsional) |
-| thumbnail_url | string | URL gambar thumbnail eksternal (opsional, alternatif upload) |
-| image_urls | JSON string | Array URL gambar eksternal (opsional, alternatif upload) |
-| video_url | string | URL video eksternal (opsional, alternatif upload) |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| name | string | ✅ | Nama produk |
+| category_id | ObjectId | ✅ | ID kategori |
+| variants | JSON string | ✅ | Array varian produk (lihat struktur di bawah) |
+| description | string | ❌ | Deskripsi produk lengkap |
+| short_description | string | ❌ | Deskripsi singkat |
+| product_images | file[] | ❌ | File gambar produk utama |
+| variant_{index}_images | file[] | ❌ | File gambar per variant (contoh: `variant_0_images`, `variant_1_images`) |
+| video | file | ❌ | File video produk |
+| thumbnail_url | string | ❌ | URL thumbnail eksternal (alternatif upload) |
+| image_urls | JSON string | ❌ | Array URL gambar eksternal (alternatif upload) |
+| video_url | string | ❌ | URL video eksternal (alternatif upload) |
 
-**Catatan:**
-- Untuk gambar, pilih salah satu: upload file ATAU kirim URL eksternal
-- Di lokal: bisa upload file
-- Di Vercel: gunakan URL eksternal (misal dari Cloudinary, ImgBB, dll)
+**Struktur Variants (JSON Array):**
+
+Setiap variant harus memiliki struktur berikut:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| sku | string | ❌ | SKU unik (auto-generated jika kosong: `SLUG-001`) |
+| attributes | object | ✅ | Object key-value untuk atribut variant |
+| price | number | ✅ | Harga variant |
+| stock | number | ✅ | Stok variant |
+| weight | number | ❌ | Berat dalam gram |
+
+**Contoh Request (form-data):**
+
+```
+name: "Kaos Polos Premium"
+category_id: "675a1234567890abcdef1234"
+description: "Kaos polos berbahan cotton combed 30s, nyaman dan adem"
+short_description: "Kaos cotton combed 30s"
+variants: [
+  {
+    "sku": "KAOS-POLOS-001",
+    "attributes": {
+      "warna": "Hitam",
+      "ukuran": "M"
+    },
+    "price": 85000,
+    "stock": 50,
+    "weight": 200
+  },
+  {
+    "sku": "KAOS-POLOS-002",
+    "attributes": {
+      "warna": "Hitam",
+      "ukuran": "L"
+    },
+    "price": 89000,
+    "stock": 40,
+    "weight": 220
+  },
+  {
+    "attributes": {
+      "warna": "Putih",
+      "ukuran": "M"
+    },
+    "price": 85000,
+    "stock": 30,
+    "weight": 200
+  }
+]
+product_images: [file1.jpg, file2.jpg]
+variant_0_images: [variant0_img1.jpg]
+variant_1_images: [variant1_img1.jpg]
+```
+
+**Catatan Gambar & Video:**
+- Untuk gambar, pilih salah satu: **upload file** ATAU **kirim URL eksternal**
+- Di lokal: bisa upload file langsung
+- Di Vercel: gunakan URL eksternal (Cloudinary, ImgBB, dll)
+- Gambar pertama akan otomatis jadi thumbnail (is_primary: true)
+
+**Success Response (201):**
+
+```json
+{
+  "message": "Product created successfully",
+  "product": {
+    "_id": "675b1234567890abcdef5678",
+    "name": "Kaos Polos Premium",
+    "slug": "kaos-polos-premium",
+    "description": "Kaos polos berbahan cotton combed 30s...",
+    "short_description": "Kaos cotton combed 30s",
+    "category_id": "675a1234567890abcdef1234",
+    "status": "active",
+    "price_min": 85000,
+    "price_max": 89000,
+    "total_stock": 120,
+    "variant_count": 3,
+    "thumbnail": "/uploads/product_images-xxx.jpg",
+    "createdAt": "2024-12-25T10:00:00.000Z",
+    "updatedAt": "2024-12-25T10:00:00.000Z"
+  },
+  "variants": [
+    {
+      "_id": "675c1111111111111111",
+      "product_id": "675b1234567890abcdef5678",
+      "sku": "KAOS-POLOS-001",
+      "attributes": { "warna": "Hitam", "ukuran": "M" },
+      "price": 85000,
+      "stock": 50,
+      "weight": 200,
+      "is_active": true
+    }
+  ],
+  "images": [
+    {
+      "product_id": "675b1234567890abcdef5678",
+      "variant_id": null,
+      "image_url": "/uploads/product_images-xxx.jpg",
+      "is_primary": true,
+      "sort_order": 0
+    }
+  ],
+  "video_uploaded": false,
+  "used_external_urls": false
+}
+```
 
 ---
 
@@ -202,6 +306,69 @@ Mengambil semua produk dengan filter dan pagination.
 | URL | /jshope/product/:id |
 | Auth | Required (Admin) |
 | Access | Admin Only |
+| Content-Type | multipart/form-data |
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| id | ObjectId | ID produk yang akan diupdate |
+
+**Request Body (form-data):**
+
+Semua field bersifat opsional. Hanya kirim field yang ingin diubah.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| name | string | Nama produk baru (slug akan di-regenerate) |
+| description | string | Deskripsi produk |
+| short_description | string | Deskripsi singkat |
+| category_id | ObjectId | ID kategori baru |
+| variants | JSON string | Array varian baru (⚠️ akan menghapus semua variant lama!) |
+| product_images | file[] | File gambar produk baru |
+| variant_{index}_images | file[] | File gambar per variant |
+| video | file | File video produk |
+
+**Struktur Variants (JSON Array):**
+
+Sama seperti Create Product:
+
+```json
+[
+  {
+    "sku": "KAOS-POLOS-001",
+    "attributes": {
+      "warna": "Hitam",
+      "ukuran": "M"
+    },
+    "price": 90000,
+    "stock": 60,
+    "weight": 200
+  }
+]
+```
+
+> ⚠️ **Perhatian:** Jika mengirim field `variants`, semua variant lama akan **dihapus** dan diganti dengan yang baru!
+
+**Success Response (200):**
+
+```json
+{
+  "message": "Product updated",
+  "product": {
+    "_id": "675b1234567890abcdef5678",
+    "name": "Kaos Polos Premium V2",
+    "slug": "kaos-polos-premium-v2",
+    "description": "Deskripsi baru...",
+    "category_id": "675a1234567890abcdef1234",
+    "status": "active",
+    "price_min": 90000,
+    "price_max": 95000,
+    "total_stock": 100,
+    "variant_count": 2
+  }
+}
+```
 
 ---
 

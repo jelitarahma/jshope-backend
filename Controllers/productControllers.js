@@ -255,7 +255,18 @@ exports.updateProduct = async (req, res) => {
       short_description,
       category_id,
       variants: variantsString,
+      thumbnail_url, // URL eksternal untuk thumbnail (opsional)
+      image_urls, // Array URL eksternal untuk gambar (opsional)
+      video_url, // URL eksternal untuk video (opsional)
     } = req.body;
+
+    // DEBUG: Log apa yang diterima dari frontend
+    console.log('=== UPDATE PRODUCT DEBUG ===');
+    console.log('thumbnail_url received:', thumbnail_url);
+    console.log('image_urls received:', image_urls);
+    console.log('Is new external URL:', thumbnail_url && !thumbnail_url.startsWith('/uploads/'));
+    console.log('Full req.body:', JSON.stringify(req.body, null, 2));
+    console.log('============================');
 
     if (name) {
       product.name = name;
@@ -272,6 +283,11 @@ exports.updateProduct = async (req, res) => {
     if (description) product.description = description;
     if (short_description) product.short_description = short_description;
     if (category_id) product.category_id = category_id;
+
+    // Handle video_url dari body
+    if (video_url) {
+      product.video_url = video_url;
+    }
 
     await product.save();
 
@@ -296,7 +312,7 @@ exports.updateProduct = async (req, res) => {
         await variant.save();
 
         const fileKey = `variant_${i}_images`;
-        const variantFiles = req.files.filter((f) => f.fieldname === fileKey);
+        const variantFiles = req.files ? req.files.filter((f) => f.fieldname === fileKey) : [];
         if (variantFiles.length > 0) {
           const images = variantFiles.map((file, idx) => ({
             product_id: product._id,
@@ -310,10 +326,49 @@ exports.updateProduct = async (req, res) => {
       }
     }
 
-    const productImages = req.files.filter(
+    // Parse image_urls jika ada (string JSON)
+    let parsedImageUrls = [];
+    if (image_urls) {
+      try {
+        parsedImageUrls = JSON.parse(image_urls);
+      } catch (e) {
+        // Jika bukan JSON, coba split by comma
+        parsedImageUrls = image_urls.split(",").map((u) => u.trim());
+      }
+    }
+
+    // Handle gambar produk
+    const productImages = req.files ? req.files.filter(
       (f) => f.fieldname === "product_images"
-    );
-    if (productImages.length > 0) {
+    ) : [];
+    
+    // Cek apakah thumbnail_url adalah URL eksternal baru (bukan path /uploads/ lama)
+    const isNewExternalUrl = thumbnail_url && !thumbnail_url.startsWith('/uploads/');
+    
+    if (isNewExternalUrl) {
+      // PRIORITAS TERTINGGI: Jika user kirim URL eksternal baru, SELALU update
+      // Ini untuk kasus user mau ganti dari uploaded image ke URL eksternal
+      const existingPrimary = await ProductImage.findOne({
+        product_id: product._id,
+        is_primary: true,
+      });
+      
+      if (existingPrimary) {
+        // Update existing primary image dengan URL baru
+        existingPrimary.image_url = thumbnail_url;
+        await existingPrimary.save();
+      } else {
+        // Create new primary image
+        await ProductImage.create({
+          product_id: product._id,
+          variant_id: null,
+          image_url: thumbnail_url,
+          is_primary: true,
+          sort_order: 0,
+        });
+      }
+    } else if (productImages.length > 0) {
+      // Opsi 2: Pakai file upload baru
       const images = productImages.map((file, idx) => ({
         product_id: product._id,
         variant_id: null,
@@ -322,9 +377,23 @@ exports.updateProduct = async (req, res) => {
         sort_order: idx,
       }));
       await ProductImage.insertMany(images);
+    } else if (parsedImageUrls.length > 0) {
+      // Opsi 3: Pakai URL eksternal dari image_urls array
+      // Hapus gambar lama dulu jika ada URL baru
+      await ProductImage.deleteMany({ product_id: product._id, variant_id: null });
+      const images = parsedImageUrls.map((url, idx) => ({
+        product_id: product._id,
+        variant_id: null,
+        image_url: url,
+        is_primary: idx === 0,
+        sort_order: idx,
+      }));
+      await ProductImage.insertMany(images);
     }
+    // Jika thumbnail_url adalah path /uploads/ lama dan tidak ada perubahan, tidak update apa-apa
 
-    const videoFile = req.files.find((f) => f.fieldname === "video");
+    // Handle video - prioritas: file upload > video_url dari body
+    const videoFile = req.files ? req.files.find((f) => f.fieldname === "video") : null;
     if (videoFile) {
       product.video_url = `/uploads/${videoFile.filename}`;
       await product.save();
@@ -332,7 +401,11 @@ exports.updateProduct = async (req, res) => {
 
     await updateProductSummary(product._id);
 
-    res.json({ message: "Product updated", product });
+    res.json({ 
+      message: "Product updated", 
+      product,
+      used_external_urls: parsedImageUrls.length > 0 || !!thumbnail_url || !!video_url,
+    });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

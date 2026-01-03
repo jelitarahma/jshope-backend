@@ -769,12 +769,85 @@ Konfigurasi yang perlu dilakukan di Midtrans Dashboard:
 
 ---
 
+## Dashboard (Admin)
+
+### Get Dashboard Analytics
+
+Mengambil semua data statistik untuk dashboard admin dalam satu request.
+
+| Property | Value |
+|----------|-------|
+| Method | GET |
+| URL | /jshope/dashboard |
+| Auth | Required (Admin) |
+| Access | Admin Only |
+
+**Success Response (200):**
+
+```json
+{
+  "summary": {
+    "totalSales": {
+      "current": 5000000,
+      "previous": 4500000,
+      "percentageChange": 11.1
+    },
+    "totalOrders": {
+      "current": 150,
+      "previous": 130,
+      "percentageChange": 15.4
+    },
+    "totalProductsSold": {
+      "current": 320,
+      "previous": 280,
+      "percentageChange": 14.3
+    },
+    "totalCustomers": 89,
+    "newCustomersThisMonth": 12
+  },
+  "productsByCategory": [
+    { "name": "Fashion", "count": 25, "percentage": 45.5, "sales": 2500000 },
+    { "name": "Electronics", "count": 15, "percentage": 27.3, "sales": 4000000 }
+  ],
+  "monthlySales": [
+    { "month": "Jan", "year": 2025, "sales": 1500000, "orders": 25 },
+    { "month": "Feb", "year": 2025, "sales": 2000000, "orders": 35 }
+  ],
+  "recentOrders": [
+    {
+      "order_number": "ORD-20251227-001",
+      "customer": "John Doe",
+      "total": 500000,
+      "status": "delivered",
+      "payment_status": "paid",
+      "date": "2025-12-27T10:30:00Z"
+    }
+  ]
+}
+```
+
+**Response Fields:**
+
+| Field | Description |
+|-------|-------------|
+| summary.totalSales | Total penjualan (paid orders) bulan ini vs bulan lalu |
+| summary.totalOrders | Total order bulan ini vs bulan lalu |
+| summary.totalProductsSold | Total produk terjual bulan ini vs bulan lalu |
+| summary.totalCustomers | Total customer terdaftar |
+| summary.newCustomersThisMonth | Customer baru bulan ini |
+| productsByCategory | Jumlah produk dan sales per kategori |
+| monthlySales | Data penjualan 12 bulan terakhir (untuk chart) |
+| recentOrders | 10 order terbaru |
+
+---
+
 ## API Summary
 
 ### Admin Only Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| GET | /jshope/dashboard | Get dashboard analytics |
 | POST | /jshope/product | Create product |
 | PUT | /jshope/product/:id | Update product |
 | DELETE | /jshope/product/:id | Delete product |

@@ -260,14 +260,6 @@ exports.updateProduct = async (req, res) => {
       video_url, // URL eksternal untuk video (opsional)
     } = req.body;
 
-    // DEBUG: Log apa yang diterima dari frontend
-    console.log('=== UPDATE PRODUCT DEBUG ===');
-    console.log('thumbnail_url received:', thumbnail_url);
-    console.log('image_urls received:', image_urls);
-    console.log('Is new external URL:', thumbnail_url && !thumbnail_url.startsWith('/uploads/'));
-    console.log('Full req.body:', JSON.stringify(req.body, null, 2));
-    console.log('============================');
-
     if (name) {
       product.name = name;
       let slug = slugify(name, { lower: true, strict: true });

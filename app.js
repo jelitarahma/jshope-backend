@@ -36,6 +36,7 @@ const categoryRoutes = require("./routes/category");
 const cartRoutes = require("./routes/cart");
 const orderRoutes = require("./routes/order");
 const midtransRoutes = require("./routes/midtrans");
+const dashboardRoutes = require("./routes/dashboard");
 
 app.use("/jshope/auth", authRoutes);
 app.use("/jshope/product", productRoutes);
@@ -43,6 +44,7 @@ app.use("/jshope/categories", categoryRoutes);
 app.use("/jshope/cart", cartRoutes);
 app.use("/jshope/orders", orderRoutes);
 app.use("/jshope/midtrans", midtransRoutes);
+app.use("/jshope/dashboard", dashboardRoutes);
 
 // Start server only if not in Vercel (local development)
 if (process.env.VERCEL !== "1") {
